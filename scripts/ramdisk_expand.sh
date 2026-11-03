@@ -18,6 +18,32 @@ nr_expand_inject_ramdisk() {
         return 1
     }
 
+    # ── Linux: build the injected APFS ramdisk with apfs-pack (iOS 27 is APFS-only;
+    # no HFS+ driver in the kernelcache, and Linux has no macOS hdiutil/diskutil). ──
+    if [[ "$(uname -s)" == Linux ]]; then
+        local packer="${NR_TOOLS:-}/apfs-pack"
+        [[ -x "$packer" ]] || packer="apfs-pack"
+        local stage="" ; local -a srcargs=()
+        if [[ -f "${NR_RESOURCES:-}/restored_external" ]]; then
+            stage="$(mktemp -d)"
+            mkdir -p "$stage/usr/local/bin"
+            cp "${NR_RESOURCES}/restored_external" "$stage/usr/local/bin/restored_external"
+            chmod 755 "$stage/usr/local/bin/restored_external"
+            srcargs=(--src "$stage")
+        fi
+        local out ; out="$(mktemp -u).dmg"
+        echo "ramdisk expand: linux apfs-pack (stock image + ssh.tar.gz + restored_external) → 280m"
+        if ! "$packer" --out "$out" --size-mb 280 --image "$stock_dmg" --tar "$ssh_tar" "${srcargs[@]}"; then
+            echo "ramdisk expand: apfs-pack failed" >&2
+            [[ -n "$stage" ]] && rm -rf "$stage"
+            return 1
+        fi
+        mv -f "$out" "$stock_dmg"
+        [[ -n "$stage" ]] && rm -rf "$stage"
+        echo "ramdisk expand: linux OK (ssh.tar.gz + restored_external injected)"
+        return 0
+    fi
+
     local stock_bytes headroom max_bytes target_bytes size_m
     stock_bytes="$(stat -f%z "$stock_dmg")"
     headroom=$((80 * 1024 * 1024))

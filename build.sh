@@ -569,7 +569,8 @@ nr_expand_inject_ramdisk \
     /tmp/NewRamdiskRD \
     "$GTAR"
 # Ensure ICH-branded restored_external (replaces SSHRD_Script splash/tag).
-if [[ -f "$NR_RESOURCES/restored_external" ]]; then
+# On Linux this is already injected by nr_expand_inject_ramdisk (apfs-pack --src).
+if [[ "$(uname -s)" != Linux && -f "$NR_RESOURCES/restored_external" ]]; then
     hdiutil attach -mountpoint /tmp/NewRamdiskRD -owners off \
         -imagekey diskimage-class=CRawDiskImage "$WORK/ramdisk.dmg" >/dev/null
     if [[ -d /tmp/NewRamdiskRD/usr/local/bin ]]; then

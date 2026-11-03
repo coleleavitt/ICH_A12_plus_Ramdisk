@@ -6,7 +6,10 @@ export NEW_RAMDISK_ROOT="$ROOT"
 export NR_VERSION="v1.2-ICHA12A13"
 export NR_AUTHOR="@Official_I_C_H"
 export NR_TELEGRAM="https://t.me/Official_I_C_H"
-export NR_TOOLS="$ROOT/tools/darwin"
+case "$(uname -s)" in
+    Linux) export NR_TOOLS="$ROOT/tools/linux" ;;
+    *)     export NR_TOOLS="$ROOT/tools/darwin" ;;
+esac
 export NR_PATCH="$ROOT/patch"
 export NR_RESOURCES="$ROOT/resources"
 export NR_CACHE="$ROOT/cache"
@@ -16,6 +19,10 @@ export NR_BOOTCHAIN_ROOT="$ROOT/bootchain"
 # build.sh sources this file after CI activates .gha-venv; putting /usr/bin first
 # silently selects macOS's system Python, which does not have the pip dependencies.
 export PATH="${PATH:+$PATH:}/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$NR_TOOLS"
+# Linux: the Python patchfinders need pyimg4/capstone/lzfse from the uv venv.
+if [[ "$(uname -s)" == Linux && -x "$ROOT/.venv/bin/python3" ]]; then
+    export PATH="$ROOT/.venv/bin:$PATH"
+fi
 # shellcheck source=scripts/banner.sh
 source "$ROOT/scripts/banner.sh"
 

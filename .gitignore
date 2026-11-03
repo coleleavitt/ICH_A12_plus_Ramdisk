@@ -20,3 +20,4 @@ venv/
 *.raw
 *.dmg
 !resources/
+/tools/linux/
