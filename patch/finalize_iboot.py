@@ -26,7 +26,16 @@ MOV_X0_ZERO = bytes.fromhex("000080d2")
 # working XS iBoot had no %s; baking "%s" left a literal format token and
 # broke NAND bring-up (disk0 not configured / mount failures).
 LEEKSOV_BOOT_ARGS = b"serial=3 -v debug=0x2014e %s\x00"
-RAMDISK_BOOT_ARGS = b"rd=md0 -v debug=0x2014e\x00\x00\x00\x00\x00\x00"
+# Must include `wdt=-1`, or the AppleARMWatchdogTimer kext self-arms and panics after 600 s
+# ("no checkins from watchdogd since boot") since the ramdisk has no watchdogd. The resulting
+# panic also hangs the CPU (debug=…4 → DB_NMI → panicDebugging), so the phone drops off USB
+# entirely instead of rebooting into DFU — exactly the failure mode observed on A13 before
+# this fix. 28 bytes + NUL fills the 29-byte slot the patchfinder reserves. Verified against
+# the booted kernel's watchdog kext (sub_FFFFFFF008181DF4: the `wdt=-1` branch clears the
+# enable bytes). Giving up the 0x20000 (DB_DISABLE_LOCAL_CORE) bit matches what boot.sh asks
+# for; the setenvnp fallback can't take effect here because the `%s` was removed on purpose
+# (a literal `%s` broke NAND bring-up).
+RAMDISK_BOOT_ARGS = b"rd=md0 wdt=-1 -v debug=0x14e\x00"
 
 
 def _u32(data: bytes, off: int) -> int:
