@@ -11,10 +11,15 @@
 # Usage:
 #   scripts/connect.sh                 # interactive root shell
 #   scripts/connect.sh --demote        # demote production mode in DFU, THEN boot (see caveats below)
+#   scripts/connect.sh --dump-nvram    # ask iBoot's console for system-NVRAM vars (krn.c1*, boot-nonce)
+#                                      #   before bootx. Writes to cache/ibootnvram.<ts>.txt.
+#                                      #   Needed because userspace `nvram` on the ramdisk can only
+#                                      #   read the "common" partition.
 #   scripts/connect.sh 'mount_ich'     # run a command (NOTE: mount_ich may drop the session,
 #                                      #   see the SEP caveat at the bottom)
 # Env overrides: LPORT (host port, 2323), DPORT (device port, 22), PW (password, alpine),
-#   DEMOTE (1 = same as --demote), USBLITER8CTL (path to the control tool).
+#   DEMOTE (1 = same as --demote), ICH_DUMP_NVRAM (1 = same as --dump-nvram),
+#   USBLITER8CTL (path to the control tool).
 #
 # --demote: sends ONE control transfer (CUSTOM_DEMOTE) via usbliter8ctl from PWNED DFU, before
 #   boot, so the booted OS reports a demoted AP and lets you write e.g. com.apple.System.boot-nonce
@@ -25,7 +30,16 @@
 set -u
 LPORT="${LPORT:-2323}"; DPORT="${DPORT:-22}"; PW="${PW:-alpine}"
 DEMOTE="${DEMOTE:-0}"
-if [ "${1:-}" = "--demote" ]; then DEMOTE=1; shift; fi   # leading flag; rest of "$@" is still the remote cmd
+ICH_DUMP_NVRAM="${ICH_DUMP_NVRAM:-0}"
+# Parse leading flags in any order; rest of "$@" is still the remote command.
+while :; do
+    case "${1:-}" in
+        --demote)      DEMOTE=1; shift ;;
+        --dump-nvram)  ICH_DUMP_NVRAM=1; shift ;;
+        *) break ;;
+    esac
+done
+export ICH_DUMP_NVRAM   # boot.sh reads this when it runs through the DFU branch below
 log(){ printf '>> %s\n' "$*" >&2; }
 
 start_usbmuxd(){
@@ -70,10 +84,11 @@ CHAIN="${CHAIN:-d431ap-26.6.2-23G90-macos}"
 if lsusb 2>/dev/null | grep -q "05ac:12a8"; then
   log "ramdisk already booted (05ac:12a8)"
   [ "$DEMOTE" = 1 ] && log "NOTE: --demote ignored; device is already booted. Demote runs only in DFU before boot -> re-pwn into DFU and re-run with --demote."
+  [ "$ICH_DUMP_NVRAM" = 1 ] && log "NOTE: --dump-nvram ignored; device is already booted. The iBoot NVRAM dump runs only in DFU before bootx -> re-pwn into DFU and re-run with --dump-nvram."
 elif lsusb 2>/dev/null | grep -q "05ac:1227"; then
   [ "$DEMOTE" = 1 ] && demote_device
-  log "device in DFU; booting chain '$CHAIN'"
-  ( cd "$ROOT_DIR" && BOOTCHAIN_NAME="$CHAIN" ./boot.sh --no-logo )
+  log "device in DFU; booting chain '$CHAIN' (ICH_DUMP_NVRAM=$ICH_DUMP_NVRAM)"
+  ( cd "$ROOT_DIR" && BOOTCHAIN_NAME="$CHAIN" ICH_DUMP_NVRAM="$ICH_DUMP_NVRAM" ./boot.sh --no-logo )
   log "waiting for normal-mode USB (up to 60s)..."
   booted=0
   for _ in $(seq 30); do

@@ -417,6 +417,37 @@ irecv -c "setenvnp boot-args $BOOTARGS" \
     || irecv -c "setenv boot-args $BOOTARGS" \
     || echo "warning: setenvnp/setenv failed — verbose may not appear" >&2
 
+# ICH-NVRAM-DUMP (fork-only): if $ICH_DUMP_NVRAM=1, ask iBEC's console for the system-partition
+# cryptex seeds + boot-nonce before bootx. iBoot sees ALL partitions directly, while userspace
+# `nvram` on the ramdisk only reads the "common" partition. Output goes to the cache dir with
+# a timestamp. iBoot responses may land on UART instead of USB; if the file is empty, try `-s`.
+if [[ "${ICH_DUMP_NVRAM:-0}" == 1 ]]; then
+    mkdir -p "$NR_CACHE"
+    DUMP_OUT="$NR_CACHE/ibootnvram.$(date +%s).txt"
+    echo "ICH-NVRAM-DUMP: capturing iBoot NVRAM to $DUMP_OUT"
+    {
+        echo "=== iBoot NVRAM dump $(date -Iseconds) ==="
+        echo "=== iBoot build / fuse context (useful for interpretation) ==="
+        for v in build-style build-version secure-boot config_board auto-boot; do
+            echo "--- $v ---"; irecv -c "nvram $v" 2>&1 || true
+        done
+        echo "=== cryptex seeds (legacy 'nonce-seeds' iOS 16/17, 'krn.c1*' iOS 18+) ==="
+        # Prior session (prime 01a198b8) printed 'nonce-seeds = <binary blob>' via printenv on this
+        # device, so iBoot exposes it under that legacy name. Keep krn.c1* in the list in case this
+        # iBoot build also publishes them.
+        for v in nonce-seeds \
+                 krn.c1bt krn.c1ab krn.c1al krn.c1er krn.c1gn krn.c1sm krn.cptx \
+                 com.apple.System.boot-nonce com.apple.System.cryptex1-nonce \
+                 com.apple.System.cryptex1-nonce-seed; do
+            echo "--- $v ---"
+            irecv -c "nvram $v" 2>&1 || echo "(irecv -c returned non-zero for $v)"
+        done
+        echo "=== printenv (full dump) ==="
+        irecv -c "printenv" 2>&1 || true
+    } 2>&1 | tee "$DUMP_OUT"
+    echo "ICH-NVRAM-DUMP: wrote $DUMP_OUT"
+fi
+
 echo "bootx..."
 irecv -c bootx
 
